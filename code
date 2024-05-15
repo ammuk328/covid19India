@@ -1,0 +1,173 @@
+const express = require('express')
+const {open} = require('sqlite')
+const sqlite3 = require('sqlite3')
+const path = require('path')
+const databasePath = path.join(__dirname, 'covid19India.db')
+const app = express()
+app.use(express.json())
+let database = null
+const initializeDataAndServer = async () => {
+  try {
+    database = await open({
+      filename: databasePath,
+      driver: sqlite3.Database,
+    })
+    app.listen(3000, () =>
+      console.log('Server Running at http://localhost:3000/'),
+    )
+  } catch (e) {
+    console.log(`DB Error:${e.message}`)
+    process.exit(1)
+  }
+}
+initializeDataAndServer()
+const convertDbObjectToResponseObject = dbObject => {
+  return {
+    stateId: dbObject.state_id,
+    stateName: dbObject.state_name,
+    population: dbObject.population,
+  }
+}
+
+//API 1
+app.get('/states/', async (request, response) => {
+  const getStatesQuery = `
+    SELECT
+    *
+    FROM
+    state;
+    `
+  const statesArray = await database.all(getStatesQuery)
+  response.send(
+    statesArray.map(eachStates => convertDbObjectToResponseObject(eachStates)),
+  )
+})
+
+//API 2
+
+app.get('/states/:stateId', async (request, response) => {
+  const {stateId} = request.params
+  const getStatesQuery = `
+  SELECT 
+  *
+  FROM
+  state
+  where state_id=${stateId};
+  `
+  const state = await database.get(getStatesQuery)
+  response.send(convertDbObjectToResponseObject(state))
+})
+
+//API 3
+
+app.post('/districts/', async (request, response) => {
+  const {districtName, stateId, cases, cured, active, deaths} = request.body
+  const postDistrictQuery = `
+INSERT INTO
+district(district_name,state_id,cases,cured,active,deaths)
+VALUES('Bagalkot','3','2323','2000','315','8')`
+  const dist = await database.run(postDistrictQuery)
+  response.send('District Successfully Added')
+})
+
+//API 4
+
+app.get('/districts/:districtId/', async (request, response) => {
+  const {districtId} = request.params
+  const getDistrictQuery = `
+    SELECT 
+      district_id AS districtId,
+      district_name AS districtName,
+      state_id AS stateId,
+      cases,
+      cured,
+      active,
+      deaths
+    FROM 
+      district 
+    WHERE 
+      district_id = ${districtId};`
+  const district = await database.get(getDistrictQuery)
+  response.send(district)
+})
+
+//API 5
+
+app.delete('/districts/:districtId/', async (request, response) => {
+  const {districtId} = request.params
+  const deleteDistrictQuery = `
+  DELETE FROM
+  district
+  WHERE district_id=${districtId};
+  `
+  await database.run(deleteDistrictQuery)
+  response.send('District Removed')
+})
+
+//API 6
+
+app.put('/districts/:districtId/', async (request, response) => {
+  const {districtId} = request.params
+  const {districtName, stateId, cases, cured, active, deaths} = request.body
+
+  // Update the district details
+  const updateDistrictQuery = `
+    UPDATE
+      district
+    SET
+      district_name='${'Nadia'}',
+      state_id=${'3'},
+      cases=${'9628'},
+      cured=${'6524'},
+      active=${'3000'},
+      deaths=${'104'}
+    WHERE
+      district_id = ${districtId};`
+
+  await database.run(updateDistrictQuery)
+
+  // Fetch the updated district details
+  const getUpdatedDistrictQuery = `
+    SELECT 
+      district_id AS districtId,
+      district_name AS districtName,
+      state_id AS stateId,
+      cases,
+      cured,
+      active,
+      deaths
+    FROM 
+      district 
+    WHERE 
+      district_id = ${districtId};`
+
+  const updatedDistrict = await database.get(getUpdatedDistrictQuery)
+
+  // Send the updated district details as response
+  response.send(updatedDistrict)
+})
+
+//API 7
+
+app.get('/states/:stateId/stats/', async (request, response) => {
+  const {stateId} = request.params
+  const getStateStatsQuery = `
+    SELECT 
+      SUM(cases),
+      SUM(cured),
+      SUM(active),
+      SUM(deaths)
+    FROM 
+      district
+    WHERE 
+      state_id = ${stateId};`
+  const stateStats = await database.get(getStateStatsQuery)
+  console.log(stateStats)
+  response.send({
+    totalCases: stateStats['sum(cases)'],
+    totalCured: stateStats['sum(cured)'],
+    totalActive: stateStats['sum(active)'],
+    totalDeaths: stateStats['sum(deaths)'],
+  })
+})
+module.exports = app
